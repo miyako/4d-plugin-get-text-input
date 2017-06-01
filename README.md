@@ -27,11 +27,29 @@ intArg|LONGINT|argument to pass to the method(``$3``); typically, a window refer
 ## Example
 
 ```
-
+GET TEXT INPUT ("\r";"get_text_and_call_form";Current process name;Current form window)
 ```
 
 ## Example callback method
 
 ```
+C_TEXT($1;$text)
+C_TEXT($2;$worker)
+C_LONGINT($3;$window)
 
+Case of 
+	: (Count parameters=3)
+		
+		$text:=$1
+		$worker:=$2
+		$window:=$3
+		
+		CALL FORM($window;Current method name;$text)
+		
+	: (Count parameters=1)
+		
+		$Variable:=OBJECT Get pointer(Object named;"Variable")
+		$Variable->:=$1
+		
+End case 
 ```
