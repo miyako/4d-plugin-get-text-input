@@ -69,6 +69,8 @@ namespace Wait
 		UniChar unicode;
 		char code;
 		
+		shouldCall = FALSE;
+		
 		switch (GetEventClass(inEvent))
 		{
 			case kEventClassKeyboard :
@@ -109,37 +111,41 @@ namespace Wait
 #else
 	LRESULT CALLBACK onEventCall(int code, WPARAM wParam, LPARAM lParam)
 	{
-		INPUT input;
-		KBDLLHOOKSTRUCT *pkh = (KBDLLHOOKSTRUCT *) lParam;
-		
-		if(wParam==WM_KEYDOWN)
-		{
-			wchar_t buf[5];
-			BYTE state[256];
-			
-			GetKeyboardState(state);
-			
-			if (1 == ToUnicode(pkh->vkCode, pkh->scanCode, state, (LPWSTR)buf, 4, 0))
-			{
-				PA_Unichar unicode = buf[0];
+		shouldCall = FALSE;
 
-				if (unicode == stopcode)
+		if (code == HC_ACTION)
+		{
+			MSG* pMsg = (MSG*)lParam;
+			if (pMsg->message == WM_KEYDOWN)
+			{
+				UINT keycode = pMsg->wParam;
+				BYTE keyboard[256];
+				if (GetKeyboardState(keyboard))
 				{
-					shouldCall = TRUE;
-				}
-				else {
-					if (!((unicode >= 0xE000) && (unicode <= 0xF8FF)))
+					WCHAR buf[5] = {};
+					if (1 == ToUnicode(keycode, MapVirtualKey(keycode, MAPVK_VK_TO_VSC), keyboard, buf, 4, 0))
 					{
-						if (buffer.size() != WAIT_BUFFER)
+						PA_Unichar unicode = buf[0];
+
+						if (buffer.size() == WAIT_BUFFER) buffer.clear();
+
+						if (unicode == stopcode)
+						{
+							shouldCall = TRUE;
+						}
+						else
 						{
 							buffer += unicode;
 						}
+
 					}
+
 				}
-			}			
+
+			}
 		}
-		
-		if((shouldCall)&& (!isDying))
+
+		if((shouldCall) && (!isDying))
 		{
 			PA_NewProcess((void *)call, 0, (PA_Unichar *)"$\0v\0v\0\0\0");
 		}
@@ -165,6 +171,7 @@ namespace Wait
 												buf.setUTF16String([event charactersIgnoringModifiers]);
 												CUTF16String u16;
 												buf.copyUTF16String(&u16);
+												shouldCall = FALSE;
 												
 												for(NSUInteger i = 0; i < u16.size();++i)
 												{
@@ -203,7 +210,7 @@ namespace Wait
 			DisposeEventHandlerUPP(upp);
 #endif
 #else
-			eventMonitor = SetWindowsHookEx(WH_KEYBOARD_LL, (HOOKPROC)onEventCall, (HINSTANCE)GetModuleHandle(0), 0);
+			eventMonitor = SetWindowsHookEx(WH_GETMESSAGE, (HOOKPROC)onEventCall, 0, GetCurrentThreadId());
 #endif
 			if(eventMonitor)
 			{
