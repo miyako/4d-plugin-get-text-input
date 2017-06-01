@@ -23,3 +23,15 @@ stopcode|TEXT|character to wait for, or ``""`` to stop waiting
 method|TEXT|method to invoke (must be in the current structure, not a component
 textArg|TEXT|argument to pass to the method (``$2``); typically, a worker/process name
 intArg|LONGINT|argument to pass to the method(``$3``); typically, a window reference
+
+## Example
+
+```
+
+```
+
+## Example callback method
+
+```
+
+```
