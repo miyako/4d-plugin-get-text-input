@@ -24,13 +24,13 @@ method|TEXT|method to invoke (must be in the current structure, not a component
 textArg|TEXT|argument to pass to the method (``$2``); typically, a worker/process name
 intArg|LONGINT|argument to pass to the method(``$3``); typically, a window reference
 
-## Example
+## Examples
 
 ```
 GET TEXT INPUT ("\r";"get_text_and_call_form";Current process name;Current form window)
 ```
 
-## Example callback method
+### Example callback method
 
 ```
 C_TEXT($1;$text)
