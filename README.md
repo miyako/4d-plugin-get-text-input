@@ -3,8 +3,8 @@ Wait for stop character and return buffer; for USB HID devices (e.g. barcode sca
 
 ![version](https://img.shields.io/badge/version-18%2B-EB8E5F)
 ![platform](https://img.shields.io/static/v1?label=platform&message=mac-intel%20|%20mac-arm%20|%20win-64&color=blue)
-[![license](https://img.shields.io/github/license/miyako/get-text-input)](LICENSE)
-![downloads](https://img.shields.io/github/downloads/miyako/get-text-input/total)
+[![license](https://img.shields.io/github/license/miyako/4d-plugin-get-text-input)](LICENSE)
+![downloads](https://img.shields.io/github/downloads/miyako/4d-plugin-get-text-input/total)
 
 ## Syntax
 
