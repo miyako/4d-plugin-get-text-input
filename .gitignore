@@ -1,0 +1,4 @@
+GET TEXT INPUT/build/*
+GET TEXT INPUT/test/userPreferences.*
+GET TEXT INPUT/test/Project/DerivedData/*
+GET TEXT INPUT/test/Data/*

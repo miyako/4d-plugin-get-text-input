@@ -1,0 +1,16 @@
+{
+	"remove_after_use": {
+		"methods": [
+			"generate_constants_xlf",
+			"generate_file_from_template",
+			"generate_project",
+			"generate_project_infoplist",
+			"generate_project_plugin_stub",
+			"generate_project_source",
+			"generate_project_vs",
+			"generate_project_xcode",
+			"update_manifest_json"
+		]
+	},
+	"trash": {}
+}
