@@ -1,19 +1,14 @@
 # 4d-plugin-get-text-input
 Wait for stop character and return buffer; for USB HID devices (e.g. barcode scanner)
 
-### Platform
-
-| carbon | cocoa | win32 | win64 |
-|:------:|:-----:|:---------:|:---------:|
-|<img src="https://cloud.githubusercontent.com/assets/1725068/22371562/1b091f0a-e4db-11e6-8458-8653954a7cce.png" width="24" height="24" />|<img src="https://cloud.githubusercontent.com/assets/1725068/22371562/1b091f0a-e4db-11e6-8458-8653954a7cce.png" width="24" height="24" />|<img src="https://cloud.githubusercontent.com/assets/1725068/22371562/1b091f0a-e4db-11e6-8458-8653954a7cce.png" width="24" height="24" />|<img src="https://cloud.githubusercontent.com/assets/1725068/22371562/1b091f0a-e4db-11e6-8458-8653954a7cce.png" width="24" height="24" />|
-
-### Version
-
-<img src="https://cloud.githubusercontent.com/assets/1725068/18940649/21945000-8645-11e6-86ed-4a0f800e5a73.png" width="32" height="32" /> <img src="https://cloud.githubusercontent.com/assets/1725068/18940648/2192ddba-8645-11e6-864d-6d5692d55717.png" width="32" height="32" />
+![version](https://img.shields.io/badge/version-18%2B-EB8E5F)
+![platform](https://img.shields.io/static/v1?label=platform&message=mac-intel%20|%20mac-arm%20|%20win-64&color=blue)
+[![license](https://img.shields.io/github/license/miyako/get-text-input)](LICENSE)
+![downloads](https://img.shields.io/github/downloads/miyako/get-text-input/total)
 
 ## Syntax
 
-```
+```4d
 GET TEXT INPUT(stopcode;method;textArg;intArg)
 ```
 
@@ -26,13 +21,13 @@ intArg|LONGINT|argument to pass to the method(``$3``); typically, a window refer
 
 ## Examples
 
-```
+```4d
 GET TEXT INPUT ("\r";"get_text_and_call_form";Current process name;Current form window)
 ```
 
 ### Example callback method
 
-```
+```4d
 C_TEXT($1;$text)
 C_TEXT($2;$worker)
 C_LONGINT($3;$window)
