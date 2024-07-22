@@ -328,7 +328,7 @@ void PluginMain(PA_long32 selector, PA_PluginParameters params) {
 			// --- GET TEXT INPUT
             
 			case 1 :
-				GET_TEXT_INPUT(params);
+                PA_RunInMainProcess((PA_RunInMainProcessProcPtr)GET_TEXT_INPUT, params);
 				break;
 
         }
