@@ -4,3 +4,4 @@ GET TEXT INPUT/test/Project/DerivedData/*
 GET TEXT INPUT/test/Data/*
 GET TEXT INPUT/.vs/*
 GET TEXT INPUT/Objs/*
+build/*
