@@ -9,6 +9,7 @@
  # --------------------------------------------------------------------------------*/
 
 #include "4DPlugin-GET-TEXT-INPUT.h"
+#include <mutex>
 
 namespace Wait
 {
@@ -24,37 +25,58 @@ namespace Wait
     PA_long32 actionWindow;
     CUTF16String buffer;
 
+    // Guards buffer/shouldCall, which are written by the OS keyboard hook
+    // (running on the main/UI thread) and read+cleared by call() (running
+    // in a separate process spawned via PA_NewProcess). Without this lock
+    // the two can interleave mid-mutation on the shared CUTF16String.
+    std::mutex bufferMutex;
+
     void call()
     {
-        CUTF16String text = buffer;
-        
-        buffer.clear();
-        
-        shouldCall = FALSE;
-        
-        PA_long32 methodId = PA_GetMethodID((PA_Unichar *)actionMethod.c_str());
-        
-        if(methodId)
+        try
         {
-            PA_Variable args[3];
+            CUTF16String text;
+            CUTF16String worker;
+            PA_long32 window;
             
-            args[0] = PA_CreateVariable(eVK_Unistring);
-            PA_SetUnistring((&(args[0].uValue.fString)), (PA_Unichar *)text.c_str());
+            {
+                std::lock_guard<std::mutex> lock(bufferMutex);
+                text = buffer;
+                buffer.clear();
+                shouldCall = FALSE;
+                worker = actionWorker;
+                window = actionWindow;
+            }
             
-            args[1] = PA_CreateVariable(eVK_Unistring);
-            PA_SetUnistring((&(args[1].uValue.fString)), (PA_Unichar *)actionWorker.c_str());
+            PA_long32 methodId = PA_GetMethodID((PA_Unichar *)actionMethod.c_str());
             
-            args[2] = PA_CreateVariable(eVK_Longint);
-            PA_SetLongintVariable(&args[2], actionWindow);
-            
-            PA_ExecuteMethodByID(methodId, args, 3);
-            
-            PA_ClearVariable(&args[0]);
-            PA_ClearVariable(&args[1]);
-            PA_ClearVariable(&args[2]);
-            
+            if(methodId)
+            {
+                PA_Variable args[3];
+                
+                args[0] = PA_CreateVariable(eVK_Unistring);
+                PA_SetUnistring((&(args[0].uValue.fString)), (PA_Unichar *)text.c_str());
+                
+                args[1] = PA_CreateVariable(eVK_Unistring);
+                PA_SetUnistring((&(args[1].uValue.fString)), (PA_Unichar *)worker.c_str());
+                
+                args[2] = PA_CreateVariable(eVK_Longint);
+                PA_SetLongintVariable(&args[2], window);
+                
+                PA_ExecuteMethodByID(methodId, args, 3);
+                
+                PA_ClearVariable(&args[0]);
+                PA_ClearVariable(&args[1]);
+                PA_ClearVariable(&args[2]);
+                
+            }
         }
-        
+        catch(...)
+        {
+            // call() runs in its own spawned process, outside PluginMain's
+            // try/catch. Swallow here too so a failure in the callback
+            // method can't take down that process unhandled.
+        }
     }
     
 #if VERSIONMAC
@@ -62,10 +84,7 @@ namespace Wait
 #else
     static OSStatus onEventCall(EventHandlerCallRef inCaller, EventRef inEvent, void* inUserData)
     {
-        UInt32 keycode;
-        UInt32 modifier;
         UniChar unicode;
-        char code;
         
         shouldCall = FALSE;
         
@@ -76,11 +95,15 @@ namespace Wait
             {
                 case kEventRawKeyRepeat:
                 case kEventRawKeyDown:
-                    GetEventParameter(inEvent, kEventParamKeyCode, typeUInt32, NULL, sizeof(UInt32), NULL, &keycode);
-                    GetEventParameter(inEvent, kEventParamKeyModifiers, typeUInt32, NULL, sizeof(UInt32), NULL, &modifier);
-                    GetEventParameter(inEvent, kEventParamKeyUnicodes, typeUnicodeText, NULL, sizeof(UniChar), NULL, &unicode);
-                    GetEventParameter(inEvent, kEventParamKeyMacCharCodes, typeChar, NULL, sizeof(char), NULL, &code);
                 {
+                    // Only kEventParamKeyUnicodes is actually used below;
+                    // its status is checked so a failed retrieval can't
+                    // fall through to comparing/appending a garbage value.
+                    OSStatus err = GetEventParameter(inEvent, kEventParamKeyUnicodes, typeUnicodeText, NULL, sizeof(UniChar), NULL, &unicode);
+                    if(err != noErr) break;
+                    
+                    std::lock_guard<std::mutex> lock(bufferMutex);
+                    
                     if(unicode == stopcode)
                     {
                         shouldCall = YES;
@@ -89,7 +112,9 @@ namespace Wait
                     
                     if((unicode >= 0xE000) && (unicode <= 0xF8FF)) break;
                     
-                    if(buffer.size() == WAIT_BUFFER) break;
+                    // Buffer full without a stop-code: reset rather than
+                    // freeze so input capture isn't silently stuck forever.
+                    if(buffer.size() == WAIT_BUFFER) buffer.clear();
                     
                     buffer += unicode;
                 }
@@ -100,7 +125,7 @@ namespace Wait
         
         if((shouldCall)&& (!isDying))
         {
-            PA_NewProcess((void *)call, 0, (PA_Unichar *)"$\0v\0v\0\0\0");
+            PA_NewProcess((void *)call, 0, (PA_Unichar *)u"$vv");
         }
         
         return eventNotHandledErr;
@@ -125,6 +150,8 @@ namespace Wait
                     {
                         PA_Unichar unicode = buf[0];
 
+                        std::lock_guard<std::mutex> lock(bufferMutex);
+
                         if (buffer.size() == WAIT_BUFFER) buffer.clear();
 
                         if (unicode == stopcode)
@@ -145,7 +172,7 @@ namespace Wait
 
         if((shouldCall) && (!isDying))
         {
-            PA_NewProcess((void *)call, 0, (PA_Unichar *)"$\0v\0v\0\0\0");
+            PA_NewProcess((void *)call, 0, (PA_Unichar *)u"$vv");
         }
         
         return CallNextHookEx( eventMonitor, code, wParam, lParam );
@@ -154,8 +181,11 @@ namespace Wait
     
     void start()
     {
-        buffer.clear();
-        shouldCall = FALSE;
+        {
+            std::lock_guard<std::mutex> lock(bufferMutex);
+            buffer.clear();
+            shouldCall = FALSE;
+        }
         
         if(!eventHookIsActive)
         {
@@ -171,26 +201,32 @@ namespace Wait
                                                 buf.copyUTF16String(&u16);
                                                 shouldCall = FALSE;
                                                 
-                                                for(NSUInteger i = 0; i < u16.size();++i)
                                                 {
-                                                    PA_Unichar code = u16.at(i);
-                                                
-                                                    if(code == stopcode)
+                                                    std::lock_guard<std::mutex> lock(bufferMutex);
+                                                    
+                                                    for(NSUInteger i = 0; i < u16.size();++i)
                                                     {
-                                                        shouldCall = YES;
-                                                        break;
+                                                        PA_Unichar code = u16.at(i);
+                                                    
+                                                        if(code == stopcode)
+                                                        {
+                                                            shouldCall = YES;
+                                                            break;
+                                                        }
+                                                        
+                                                        if((code >= 0xE000) && (code <= 0xF8FF)) break;
+                                                        
+                                                        // Buffer full without a stop-code: reset rather
+                                                        // than freeze so capture isn't silently stuck.
+                                                        if(buffer.size() == WAIT_BUFFER) buffer.clear();
+                                                        
+                                                        buffer += code;
                                                     }
-                                                    
-                                                    if((code >= 0xE000) && (code <= 0xF8FF)) break;
-                                                    
-                                                    if(buffer.size() == WAIT_BUFFER) break;
-                                                    
-                                                    buffer += code;
                                                 }
                                                 
                                                 if((shouldCall)&& (!isDying))
                                                 {
-                                                    PA_NewProcess((void *)call, 0, (PA_Unichar *)"$\0v\0v\0\0\0");
+                                                    PA_NewProcess((void *)call, 0, (PA_Unichar *)u"$vv");
                                                 }
                                                 
                                                 return event;
@@ -234,7 +270,10 @@ namespace Wait
 #endif
                 eventMonitor = NULL;
             }
-            buffer.clear();
+            {
+                std::lock_guard<std::mutex> lock(bufferMutex);
+                buffer.clear();
+            }
             
             eventHookIsActive = FALSE;
             
@@ -292,7 +331,7 @@ bool IsProcessOnExit()
     
     PA_GetProcessInfo(PA_GetCurrentProcessNumber(), &name[0], &state, &time);
     CUTF16String procName(&name[0]);
-    CUTF16String exitProcName((PA_Unichar *)"$\0x\0x\0\0\0");
+    CUTF16String exitProcName((PA_Unichar *)u"$xx");
     return (!procName.compare(exitProcName));
 }
 
@@ -302,6 +341,10 @@ void OnExit()
 #if VERSIONMAC
     PA_RunInMainProcess((PA_RunInMainProcessProcPtr)Wait::stop, NULL);
 #else
+    // Previously a no-op on Windows: the keyboard hook installed via
+    // SetWindowsHookEx was never removed on process/plugin exit, leaving
+    // a dangling hook procedure pointer into this DLL after it unloads.
+    Wait::stop();
 #endif
 }
 
