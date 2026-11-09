@@ -12,6 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCT = "GET TEXT INPUT"
+ORIGINAL_WORKFLOW_COMMIT = "62af86892c7dba52759eede9895387c184adaed5"
 
 
 def load(path):
@@ -26,7 +27,8 @@ class RepositoryContractTests(unittest.TestCase):
         }
         cls.build = cls.workflows["release.yml"]
         cls.original = yaml.safe_load(subprocess.run(
-            ["git", "--no-pager", "show", "HEAD:.github/workflows/release.yml"],
+            ["git", "--no-pager", "show",
+             f"{ORIGINAL_WORKFLOW_COMMIT}:.github/workflows/release.yml"],
             cwd=ROOT, capture_output=True, text=True, check=True,
         ).stdout)
         cls.project = (ROOT / f"{PRODUCT}.xcodeproj/project.pbxproj").read_text()
