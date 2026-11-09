@@ -6,6 +6,83 @@ Wait for stop character and return buffer; for USB HID devices (e.g. barcode sca
 [![license](https://img.shields.io/github/license/miyako/4d-plugin-get-text-input)](LICENSE)
 ![downloads](https://img.shields.io/github/downloads/miyako/4d-plugin-get-text-input/total)
 
+## Manual source versioning and publication
+
+Actions exposes two independent entries: **Bump** and **Build**.
+Both are `workflow_dispatch` only and use GitHub's built-in ref selector.
+Bump has one `mode` choice (`patch`, `minor`, `major`); Build has zero custom
+inputs. Choose a branch for Bump; Build can select any ref. Each
+checkout is pinned to the dispatch's immutable `github.sha`. Bump creates exactly
+one source-only direct-child commit on the selected branch, never a tag, release,
+native build, or another workflow dispatch. Run Build separately on the new commit.
+Minor resets patch; major resets minor and patch.
+
+The original committed Bump header at
+`6e2158455e22184d37335edf2b1ff1cc3cf2f1bb` explicitly coordinates
+`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`, and source plist versions.
+Its implementation updated only the selected marketing key, leaving build and
+copied source localization stale. This migration repairs only the six stale
+`CURRENT_PROJECT_VERSION` values and the two source English version strings
+from `2.0.1` to the existing `MARKETING_VERSION` authority, `2.0.5`; it does not
+bump the version. The six target/project Development, Deployment, and Default
+configurations remain coordinated. `Info.plist`'s required
+`CFBundleShortVersionString = $(MARKETING_VERSION)` is preserved, and its absent
+optional `CFBundleVersion` stays absent. Known `$(...)` / `${...}` marketing/build
+references are preserved; unknown, cyclic, invalid, duplicate, or drifted fields
+fail before writes. `English.lproj/InfoPlist.strings` is actual source, copied by
+the Resources phase, so its short version and product info string validate and
+co-bump. Text encodings, BOMs, endian order, per-line endings, and file modes are
+preserved. Prebuilt/destination strings, including their stale UTF-16 bytes,
+are not source authority and are not rewritten during migration or Bump.
+
+Build preserves the original Windows Release/x64 MSBuild v143/SDK 10.0 job and
+subsequent macOS Default universal arm64/x86_64 job, deployment override 11.0,
+native project configuration, Cocoa linkage, copy phases, dependencies, assets,
+and secret names. Windows uses the exact vcxproj
+`test/plugins/GET TEXT INPUT.bundle/contents/windows64/GET TEXT INPUT.4DX`
+output, not a recursive search. Xcode's project-level `SYMROOT` points at
+`test/Plugins`; the workflow's explicit `CONFIGURATION_BUILD_DIR` fixes the
+canonical bundle at `test/Plugins/GET TEXT INPUT.bundle`. Only known generated
+executables, built plist/localization, signature and intermediate paths are
+invalidated; bundle resources, Windows directories, dependencies, and sibling
+Default resources are retained. The built plist and localization must match
+selected source. Required architecture names are exact tokens; extra architectures
+are allowed, as in the original policy.
+
+Build checks authenticated, fully paginated release availability (including
+drafts) and exact remote tag absence before native work and again after signing,
+strict verification, both successful JSON `Accepted` notarizations, and stapling.
+All refs share one publication concurrency group, without cancellation or a
+default-branch-only restriction. Final source/HEAD checks intentionally allow
+tracked generated bundle outputs changed by native tools; they never reset those
+outputs to pretend the checkout is clean. Source version metadata must still
+match the selected commit, including staged and unstaged changes. Other tracked
+source/configuration/resource edits also fail; only the exact generated bundle
+outputs and its generated signature files are allowed to differ.
+
+Publication is create-only: POST a new `vX.Y.Z` tag at the selected SHA, verify it
+remotely, POST a public non-prerelease with an empty body (the original workflow
+had no release body or generated notes), then upload exactly
+`GET TEXT INPUT-X.Y.Z.zip` and `GET TEXT INPUT-X.Y.Z.dmg` to that newly returned
+release ID. Authentication, missing pages, malformed responses, races, and upload
+errors fail closed. There is no reuse, PATCH, DELETE, retry, clobber, or rollback.
+**Recovery:** inspect the run's retained tag, release ID, and uploaded assets.
+A partial tag/release is deliberately retained; rerunning the same version
+fails availability. A maintainer must assess the retained state and explicitly
+resolve it outside this automation, or source-bump and publish a new version.
+Never move a published tag or rely on reruns to overwrite assets.
+
+Offline checks (no native builds, signing, notarization, 4D, or Actions dispatch):
+use Python 3 with PyYAML, Git, Bash, PowerShell (`pwsh`), `actionlint`, and the
+standard portable shell utilities. Native commands resolve only to closed-PATH
+test stubs. The original MSBuild CMD block is checked statically, never
+translated or executed.
+
+```sh
+actionlint .github/workflows/*.yml
+python3 -m unittest discover -s .github/tests -v
+```
+
 # 4d-plugin-get-text-input
 
 The plugin watches keyboard input and hands you back whatever was typed once a chosen stop character arrives, so you can drive a project method from raw keystrokes without polling a field yourself. It's built for USB HID devices that type like a keyboard — barcode scanners, magstripe/RFID readers, etc. — which typically emit a batch of characters followed by a terminator (often `Carriage return`).
