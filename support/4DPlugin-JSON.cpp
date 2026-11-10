@@ -1,5 +1,13 @@
 #include "4DPlugin-JSON.h"
 
+static bool propertyReadSucceeded()
+{
+    PA_ErrorCode error = PA_GetLastError();
+    if(error == eER_NoErr) return true;
+    std::cerr << "GET TEXT INPUT: PA_GetObjectProperty failed (" << error << ")\n";
+    return false;
+}
+
 void json_wconv(const wchar_t *value, CUTF16String *u16) {
     
     size_t wlen = wcslen(value);
@@ -25,7 +33,7 @@ void ob_set_p(PA_ObjectRef obj, const wchar_t *_key, PA_Picture value) {
     {
         if(value)
         {
-            PA_Variable v = PA_CreateVariable(eVK_Picture);
+            PA_Variable v = PA_CreateVariable(eVK_Undefined);
             CUTF16String ukey;
             json_wconv(_key, &ukey);
             PA_Unistring key = PA_CreateUnistring((PA_Unichar *)ukey.c_str());
@@ -86,7 +94,7 @@ void ob_set_s(PA_ObjectRef obj, const char *_key, const char *_value) {
         PA_Unistring key = PA_CreateUnistring((PA_Unichar *)u16k.c_str());
         PA_Unistring value = PA_CreateUnistring((PA_Unichar *)u16v.c_str());
         
-        PA_Variable v = PA_CreateVariable(eVK_Unistring);
+        PA_Variable v = PA_CreateVariable(eVK_Undefined);
         PA_SetStringVariable(&v, &value);
         PA_SetObjectProperty(obj, &key, v);
         
@@ -103,7 +111,7 @@ void ob_set_s(PA_ObjectRef obj, const wchar_t *_key, const char *_value) {
     {
         if(_value)
         {
-            PA_Variable v = PA_CreateVariable(eVK_Unistring);
+            PA_Variable v = PA_CreateVariable(eVK_Undefined);
             CUTF16String ukey;
             
             json_wconv(_key, &ukey);
@@ -151,7 +159,7 @@ void ob_set_a(PA_ObjectRef obj, const wchar_t *_key, const wchar_t *_value) {
     {
         if(_value)
         {
-            PA_Variable v = PA_CreateVariable(eVK_Unistring);
+            PA_Variable v = PA_CreateVariable(eVK_Undefined);
             CUTF16String ukey;
             CUTF16String uvalue;
             json_wconv(_key, &ukey);
@@ -180,7 +188,7 @@ void ob_set_a(PA_ObjectRef obj, const wchar_t *_key, const CUTF16String *_value)
         // UTF-16 data as wchar_t there would misread the buffer width and
         // corrupt or over-read it. Only _key -- a real wchar_t string
         // literal from the caller -- goes through the normal conversion.
-        PA_Variable v = PA_CreateVariable(eVK_Unistring);
+        PA_Variable v = PA_CreateVariable(eVK_Undefined);
         CUTF16String ukey;
         json_wconv(_key, &ukey);
 
@@ -450,7 +458,8 @@ bool ob_get_a(PA_ObjectRef obj, const wchar_t *_key, CUTF8String *value) {
         if(is_defined)
         {
             PA_Variable v = PA_GetObjectProperty(obj, &key);
-            if(PA_GetVariableKind(v) == eVK_Unistring)
+            is_defined = propertyReadSucceeded();
+            if(is_defined && PA_GetVariableKind(v) == eVK_Unistring)
             {
                 PA_Unistring uvalue = PA_GetStringVariable(v);
                 
@@ -488,6 +497,7 @@ bool ob_get_a(PA_ObjectRef obj, const wchar_t *_key, CUTF8String *value) {
                 }
 #endif
             }
+            if(is_defined) PA_ClearVariable(&v);
         }
         
         PA_DisposeUnistring(&key);
@@ -509,9 +519,13 @@ bool ob_get_b(PA_ObjectRef obj, const wchar_t *_key) {
         if(PA_HasObjectProperty(obj, &key))
         {
             PA_Variable v = PA_GetObjectProperty(obj, &key);
-            if(PA_GetVariableKind(v) == eVK_Boolean)
+            if(propertyReadSucceeded())
             {
-                value = PA_GetBooleanVariable(v);
+                if(PA_GetVariableKind(v) == eVK_Boolean)
+                {
+                    value = PA_GetBooleanVariable(v);
+                }
+                PA_ClearVariable(&v);
             }
         }
         
@@ -534,9 +548,13 @@ double ob_get_n(PA_ObjectRef obj, const wchar_t *_key) {
         if(PA_HasObjectProperty(obj, &key))
         {
             PA_Variable v = PA_GetObjectProperty(obj, &key);
-            if(PA_GetVariableKind(v) == eVK_Real)
+            if(propertyReadSucceeded())
             {
-                value = PA_GetRealVariable(v);
+                if(PA_GetVariableKind(v) == eVK_Real)
+                {
+                    value = PA_GetRealVariable(v);
+                }
+                PA_ClearVariable(&v);
             }
         }
         
@@ -559,9 +577,16 @@ PA_CollectionRef ob_get_c(PA_ObjectRef obj, const wchar_t *_key) {
         if(PA_HasObjectProperty(obj, &key))
         {
             PA_Variable v = PA_GetObjectProperty(obj, &key);
-            if(PA_GetVariableKind(v) == eVK_Collection)
+            if(propertyReadSucceeded())
             {
-                value = PA_GetCollectionVariable(v);
+                if(PA_GetVariableKind(v) == eVK_Collection)
+                {
+                    value = PA_GetCollectionVariable(v);
+                }
+                else
+                {
+                    PA_ClearVariable(&v);
+                }
             }
         }
         
@@ -583,9 +608,16 @@ PA_ObjectRef ob_get_o(PA_ObjectRef obj, const wchar_t *_key) {
         if(PA_HasObjectProperty(obj, &key))
         {
             PA_Variable v = PA_GetObjectProperty(obj, &key);
-            if(PA_GetVariableKind(v) == eVK_Object)
+            if(propertyReadSucceeded())
             {
-                value = PA_GetObjectVariable(v);
+                if(PA_GetVariableKind(v) == eVK_Object)
+                {
+                    value = PA_GetObjectVariable(v);
+                }
+                else
+                {
+                    PA_ClearVariable(&v);
+                }
             }
         }
         
@@ -602,8 +634,16 @@ void ob_stringify(PA_ObjectRef obj, CUTF8String *value) {
     _params[0] = PA_CreateVariable(eVK_Object);
     PA_SetObjectVariable(&_params[0], PA_DuplicateObject(obj));
     PA_Variable vjson = PA_ExecuteCommandByID( /*JSON Stringify */1217, _params, 1);
+    PA_ErrorCode error = PA_GetLastError();
     PA_ClearVariable(&_params[0]);
     
+    // Handle allocation failure returns raw kind zero, not a string owner.
+    if(vjson.fType == 0)
+    {
+        std::cerr << "GET TEXT INPUT: JSON Stringify failed (" << error << ")\n";
+        return;
+    }
+
     if(PA_GetVariableKind(vjson) != eVK_Unistring)
     {
         // "JSON Stringify" didn't return a string (unexpected failure) --
