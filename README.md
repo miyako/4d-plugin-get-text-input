@@ -83,6 +83,81 @@ actionlint .github/workflows/*.yml
 python3 -m unittest discover -s .github/tests -v
 ```
 
+## Native ownership regression
+
+The synchronous callback owns its independent argument strings and any method
+return. Both are cleared after use. `PA_SetUnistring` is a content setter, so
+the callback's initially allocated empty strings are not overwritten owners.
+The dormant JSON setters instead use shallow string/picture variable setters:
+their destinations start Undefined. Successful scalar getter results are copied
+before cleanup; successful object/collection getter results transfer their owner
+to the caller, which must call `PA_DisposeObject` / `PA_DisposeCollection`.
+Mismatches are cleared. Failed object-property calls are checked before any
+result access or cleanup and reported to stderr (there is no repository logger);
+the existing false/zero/null return conventions are retained, and the text
+getter returns false without changing the caller's output. JSON Stringify's
+raw-kind-zero allocation-failure sentinel is neither read nor cleared.
+
+Audit baseline: `7cd105517c7ff7a7c1ee4ae45c7886479a022329`.
+The complete bundled `4DPluginAPI.c` has Git blob
+`62f745e91d81ef2c3c901c656ea8e175d3b173e8`, identical to the SDK implementation
+at `miyako/4d-plugin-poppler@39a961c8fbe543640fcb3c53d483fb90bbe22586`.
+Local file history reaches `6f6416953b543f158833f743a8542b171f3e951a`
+("new project") before the later path move. Neither its v14 comment nor the
+header's v13 comment establishes an upstream SDK release or engine version;
+that upstream identity remains unverified.
+
+Tracked native surface inventory:
+
+| Surface | Reachability and ownership findings |
+|---|---|
+| `4DPlugin-GET-TEXT-INPUT.cpp/.h` | Both projects compile it. `FourDPackex` in the SDK calls `PluginMain`; selector 1 dispatches `GET_TEXT_INPUT`, `kCloseProcess` handles shutdown. Manifest declares only `GET TEXT INPUT(&T;&T;&T;&L)`. Internal callback returns still require cleanup. |
+| `Classes/C_TEXT.cpp/.h`, `C_LONGINT.cpp/.h`, `C_TYPES.h` | Both projects compile the implementation files. Text parameters copy borrowed buffers into C++ storage; outputs use content setters. Integer wrapper has no heap owner. |
+| `Classes/ARRAY_TEXT.cpp/.h` | Tracked dormant, not in either Sources/ClCompile list or included by compiled entry code. Copies borrowed elements into C++ storage and independently allocates each output. No post-transfer disposal defect on accepted normal assignments. |
+| `Classes/C_BLOB.cpp/.h` | Tracked dormant; byte/handle wrapper, not a string descriptor transfer. Its old-handle-before-allocation failure path is deferred as non-string scope. |
+| `support/4DPlugin-JSON.cpp/.h` | Tracked dormant, not included or compiled by either project. Initial-owner overwrites, getter-owner leaks, failed-output reads and command failure sentinel are covered by the regression. Picture setter's existing input-owner consumption is preserved. |
+| `4DPluginAPI.c/.h/.def`, `EntryPoints.h`, `PrivateTypes.h`, `PublicTypes.h`, `Flags.h` | Bundled SDK internals, unchanged. Windows `.def` exports `FourDPackex`; macOS uses the same visible SDK entry. Complete SDK is compiled in the harness, not extracted API snippets. |
+| `include/json/*.h`, `a/libjsoncpp.a`, Windows jsoncpp libraries | Third-party, excluded from production fixes. |
+| Both native projects/solution, manifests/constants, plist/resources and prebuilt plugin/archive files | Inspected as build/dispatch/binary surfaces, preserved byte-for-byte. The copied bundle manifest has the same command signature. Existing prebuilt binaries are not rebuilt or certified. |
+
+On macOS, run this direct unsigned synthetic-host regression with Apple Clang
+and Cocoa; it does not invoke Xcode projects, 4D or publication workflows:
+
+```sh
+python3 .github/tests/test_ownership.py
+baseline="$(mktemp -d)"
+git archive 7cd105517c7ff7a7c1ee4ae45c7886479a022329 | tar -x -C "$baseline"
+python3 .github/tests/test_ownership.py --source-root "$baseline" --expect-baseline-defects
+```
+
+The same harness compiles actual first-party sources and the full unchanged SDK
+for both runs. It verifies five named baseline failures (callback return owner,
+JSON overwritten empty owner, getter result owner, command sentinel and failed
+getter output) and zero failures after the fix. Array, scalar content-setter,
+stringify-success and stubbed-dispatcher controls pass in both. Fixtures cover
+exact ASCII, BMP, supplementary UTF-16 pairs, allocated/null empties, independent
+outputs, borrowed copies, replacement/shrink/clear, rejected transfers, owning
+reference handoff survival, failure output preservation and explicit
+string/handle/reference balances. ASan/UBSan are enabled; macOS LSan is unavailable,
+so allocation ledgers assert final balances. The SDK's packed ABI is preserved.
+The event-monitor class is replaced before compiling the actual dispatcher;
+the test never invokes an event handler or captures actual input.
+
+**Deferred boundaries:** the SDK array setter accepts only Unicode arrays with
+non-null data, `0 <= index <= count`, and a non-null input descriptor. Rejections
+retain caller ownership. Normal-array tests do not certify resize OOM: the
+bundled SDK updates the element count even when handle resize fails. Dormant
+`ARRAY_TEXT` also publishes a typed null-data descriptor after failed initial
+creation, while subsequent lock/unlock calls can overwrite the allocation error.
+It has no return/error channel; transactional creation/error reporting and
+original-parameter preservation require a separately designed boundary fix.
+Failed string creation can likewise return an uninitialized engine descriptor;
+this audit does not claim general allocation-failure recovery. SDK-only pointer
+metadata, application-path and picture-data output contracts remain unverified;
+there are no first-party `C_POINTER` or `CPicture` wrappers here. No SDK internals,
+third-party code, projects, manifests, binaries or manual workflows are changed.
+No Windows or real-4D host execution/crash certification is implied.
+
 # 4d-plugin-get-text-input
 
 The plugin watches keyboard input and hands you back whatever was typed once a chosen stop character arrives, so you can drive a project method from raw keystrokes without polling a field yourself. It's built for USB HID devices that type like a keyboard — barcode scanners, magstripe/RFID readers, etc. — which typically emit a batch of characters followed by a terminator (often `Carriage return`).

@@ -63,7 +63,8 @@ namespace Wait
                 args[2] = PA_CreateVariable(eVK_Longint);
                 PA_SetLongintVariable(&args[2], window);
                 
-                PA_ExecuteMethodByID(methodId, args, 3);
+                PA_Variable result = PA_ExecuteMethodByID(methodId, args, 3);
+                PA_ClearVariable(&result);
                 
                 PA_ClearVariable(&args[0]);
                 PA_ClearVariable(&args[1]);
